@@ -15,12 +15,20 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [savedPin, setSavedPin] = useState('');
-  const [isError, setIsError] = useState(false); // State untuk handle error delay
+  const [isError, setIsError] = useState(false);
+  
+  // Reset PIN States
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [secretAnswer, setSecretAnswer] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [resetStep, setResetStep] = useState(1);
+
+  // Goal States
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalName, setGoalName] = useState('Loading...');
   const [goalTarget, setGoalTarget] = useState(0);
 
-  // 1. Fetch Settings
+  // 1. Fetch Settings from Supabase
   const fetchSettings = async () => {
     const { data } = await supabase
       .from('settings')
@@ -39,7 +47,7 @@ export default function App() {
     fetchSettings();
   }, []);
 
-  // 2. Auto-Login Logic dengan Error Delay
+  // 2. Auto-Login Logic with Error Delay
   useEffect(() => {
     if (pinInput.length === 4) {
       if (pinInput === savedPin) {
@@ -47,7 +55,6 @@ export default function App() {
         setIsError(false);
       } else {
         setIsError(true);
-        // Delay 1.5 detik sebelum reset biar tulisan error sempet kebaca
         setTimeout(() => {
           setPinInput('');
           setIsError(false);
@@ -55,6 +62,26 @@ export default function App() {
       }
     }
   }, [pinInput, savedPin]);
+
+  // 3. Reset PIN Logic
+  const handleResetPin = async () => {
+    if (newPin.length !== 4) return;
+    
+    const { error } = await supabase
+      .from('settings')
+      .update({ pin_code: newPin })
+      .eq('id', 1);
+
+    if (!error) {
+      setSavedPin(newPin);
+      setPinInput('');
+      setShowResetModal(false);
+      setResetStep(1);
+      setSecretAnswer('');
+      setNewPin('');
+      // Optional: Beri feedback visual kalau berhasil
+    }
+  };
 
   const handleUpdateGoal = async () => {
     if (isEditingGoal) {
@@ -88,14 +115,14 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-white dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-6 transition-colors font-sans overflow-hidden relative">
-        <div className="flex flex-col items-center z-10">
+        <div className="flex flex-col items-center z-10 w-full max-w-xs">
           <div className="w-12 h-12 bg-black dark:bg-white rounded-3xl flex items-center justify-center mb-8 shadow-2xl transition-colors">
             <Lock className="text-white dark:text-black" size={20} />
           </div>
           <h1 className="text-xl font-bold tracking-tighter mb-2 dark:text-white transition-colors">fin.yam</h1>
           <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-16">Enter Secure PIN</p>
           
-          <div className="flex gap-4 relative">
+          <div className="flex gap-4 relative mb-12">
             <input 
               autoFocus
               type="text"
@@ -106,7 +133,6 @@ export default function App() {
               onChange={(e) => !isError && setPinInput(e.target.value.replace(/\D/g, ''))}
               className="absolute inset-0 w-full h-full opacity-0 cursor-default z-20"
             />
-
             {[...Array(4)].map((_, i) => (
               <div 
                 key={i} 
@@ -127,15 +153,114 @@ export default function App() {
             ))}
           </div>
 
-          <div className="h-8 mt-8 text-center">
+          <div className="h-6 mb-8 text-center">
             {isError && (
               <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest animate-shake">
                 Invalid PIN. Try again.
               </p>
             )}
           </div>
+
+          <button 
+            onClick={() => setShowResetModal(true)}
+            className="text-[9px] font-bold uppercase tracking-widest text-gray-300 hover:text-black dark:hover:text-white transition-colors"
+          >
+            Forgot PIN?
+          </button>
         </div>
 
+        {/* MODAL RESET PIN (Gaya Modern Minimalist Monokrom) */}
+        {showResetModal && (
+          <div className="absolute inset-0 z-50 bg-white dark:bg-black flex flex-col items-center justify-center p-6 transition-all duration-500 animate-fade-in font-sans">
+            
+            {/* Tombol Close (Pojok Kanan Atas, Tipis) */}
+            <button 
+              onClick={() => {setShowResetModal(false); setResetStep(1); setSecretAnswer('');}} 
+              className="absolute top-8 right-8 p-2 text-gray-300 hover:text-black dark:hover:text-white transition-colors active:scale-90"
+            >
+              <X size={20} strokeWidth={1.5} />
+            </button>
+            
+            <div className="w-full max-w-lg space-y-16">
+              
+              {resetStep === 1 ? (
+                // STEP 1: Pertanyaan (Gaya Tipografi Besar)
+                <div className="space-y-12">
+                  <div className="space-y-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 font-bold">Security Verification</p>
+                    <h2 className="text-4xl sm:text-5xl font-extrabold dark:text-white tracking-tighter leading-tight max-w-md">
+                      Siapa nama hewan kamu?
+                    </h2>
+                  </div>
+                  
+                  <div className="relative group">
+                    <input 
+                      autoFocus
+                      type="text"
+                      className="w-full bg-transparent border-b border-gray-100 dark:border-[#1F1F1F] focus:border-black dark:focus:border-white py-5 outline-none text-3xl font-bold dark:text-white uppercase placeholder:text-gray-100 dark:placeholder:text-[#111111] transition-all tracking-tight"
+                      placeholder="Type Answer..."
+                      value={secretAnswer}
+                      onChange={(e) => {
+                        setSecretAnswer(e.target.value);
+                        if (e.target.value.toLowerCase() === 'jamal') {
+                          // Sedikit delay visual sebelum pindah step
+                          setTimeout(() => setResetStep(2), 600);
+                        }
+                      }}
+                    />
+                    {/* Garis aksen tipis saat fokus */}
+                    <div className="absolute bottom-0 left-0 w-0 h-px bg-black dark:bg-white group-focus-within:w-full transition-all duration-500"></div>
+                  </div>
+                </div>
+              ) : (
+                // STEP 2: Input PIN Baru (Gaya Terpisah Geometric)
+                <div className="space-y-12 animate-fade-in-up">
+                  <div className="space-y-3">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-green-500 font-bold flex items-center gap-2">
+                      <Check size={12} strokeWidth={3}/> Identity Verified
+                    </p>
+                    <h2 className="text-4xl sm:text-5xl font-extrabold dark:text-white tracking-tighter leading-tight">
+                      Set New PIN
+                    </h2>
+                  </div>
+
+                  {/* Kita pakai UI Kotak Terpisah yang sama dengan Lock Screen biar Konsisten */}
+                  <div className="flex gap-4 relative justify-center sm:justify-start">
+                    <input 
+                      autoFocus
+                      type="text"
+                      pattern="\d*"
+                      inputMode="numeric"
+                      maxLength={4}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-default z-20"
+                      value={newPin}
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                    />
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className={`w-14 h-16 rounded-xl border flex items-center justify-center transition-all duration-300 ${newPin.length === i ? 'border-black dark:border-white bg-gray-50 dark:bg-[#111111]' : 'border-gray-100 dark:border-[#1F1F1F] bg-white dark:bg-[#0A0A0A]'}`}>
+                        {newPin.length > i ? (
+                          <div className="w-2.5 h-2.5 bg-black dark:bg-white rounded-full animate-popIn"></div>
+                        ) : (
+                          <div className="w-2 h-2 bg-gray-100 dark:bg-[#1F1F1F] rounded-full"></div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button 
+                    disabled={newPin.length !== 4}
+                    onClick={handleResetPin}
+                    className="w-full sm:w-auto bg-black dark:bg-white text-white dark:text-black px-10 py-4 rounded-full text-[10px] font-bold uppercase tracking-[0.2em] disabled:opacity-10 transition-all active:scale-95 shadow-tiny"
+                  >
+                    Confirm Secure PIN
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Background Accents */}
         <div className="absolute inset-0 z-0 opacity-5 dark:opacity-10 pointer-events-none">
           <div className="absolute -left-16 -top-16 w-64 h-64 bg-gray-300 dark:bg-gray-800 rounded-full blur-3xl"></div>
           <div className="absolute -right-16 -bottom-16 w-64 h-64 bg-gray-300 dark:bg-gray-800 rounded-full blur-3xl"></div>
@@ -144,9 +269,10 @@ export default function App() {
     );
   }
 
+  // --- MAIN DASHBOARD UI ---
   return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-[#0A0A0A] transition-colors duration-300 font-sans">
-      <nav className="bg-white dark:bg-[#111111] border-b border-gray-100 dark:border-[#1F1F1F] shadow-tiny sticky top-0 z-50 transition-colors">
+      <nav className="bg-white dark:bg-[#111111] border-b border-gray-100 dark:border-[#1F1F1F] shadow-tiny sticky top-0 z-40 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
           <div className="w-10"></div> 
           <div className="flex items-center gap-2">
@@ -166,7 +292,9 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 md:p-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
           <aside className="lg:col-span-4 space-y-8">
+            {/* Balance Card */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h2 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em]">Total Balance</h2>
               <p className={`text-3xl font-bold tracking-tighter break-all ${balance >= 0 ? 'text-black dark:text-white' : 'text-red-500'}`}>
@@ -184,6 +312,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Quick Add Form */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h3 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em] flex items-center gap-2">
                 <Plus size={14} strokeWidth={3} /> Quick Add
@@ -207,7 +336,8 @@ export default function App() {
           </aside>
 
           <div className="lg:col-span-8 space-y-8">
-            <section className="bg-white dark:bg-[#111111] p-5 sm:p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny h-auto transition-colors">
+            {/* History Section */}
+            <section className="bg-white dark:bg-[#111111] p-5 sm:p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100 dark:border-[#1F1F1F]">
                 <h2 className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em]">Transaction History</h2>
                 <div className="flex items-center gap-3">
@@ -245,6 +375,7 @@ export default function App() {
               </div>
             </section>
 
+            {/* Savings Goal Section */}
             <section className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100 dark:border-[#1F1F1F]">
                 <h2 className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
