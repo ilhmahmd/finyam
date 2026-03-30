@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react'; // Tambah useEffect
 import { useFinance } from './hooks/useFinance';
 import { formatIDR, formatDate } from './utils/formatters';
 import { Plus, Trash2, TrendingUp, TrendingDown, Target, Calendar, X, Edit2, Check } from 'lucide-react';
@@ -11,8 +11,24 @@ export default function App() {
   const [filterDate, setFilterDate] = useState('');
   
   const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [goalName, setGoalName] = useState('Setup RTX PC');
-  const [goalTarget, setGoalTarget] = useState(15000000);
+
+  // --- PERSISTENCE LOGIC FOR GOALS ---
+  // Ambil data dari localStorage saat pertama kali load
+  const [goalName, setGoalName] = useState(() => {
+    return localStorage.getItem('finyam_goal_name') || 'Setup RTX PC';
+  });
+  
+  const [goalTarget, setGoalTarget] = useState(() => {
+    const savedTarget = localStorage.getItem('finyam_goal_target');
+    return savedTarget ? Number(savedTarget) : 15000000;
+  });
+
+  // Simpan otomatis setiap kali goalName atau goalTarget berubah
+  useEffect(() => {
+    localStorage.setItem('finyam_goal_name', goalName);
+    localStorage.setItem('finyam_goal_target', goalTarget);
+  }, [goalName, goalTarget]);
+  // -----------------------------------
 
   const balance = totals.income - totals.expense;
   const progress = Math.min(Math.max((balance / goalTarget) * 100, 0), 100);
@@ -56,7 +72,6 @@ export default function App() {
           
           {/* ASIDE: STATS & FORM */}
           <aside className="lg:col-span-4 space-y-8">
-            {/* BALANCE CARD */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h2 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em]">Total Balance</h2>
               <p className={`text-3xl font-bold tracking-tighter break-all ${balance >= 0 ? 'text-black dark:text-white' : 'text-red-500'}`}>
@@ -74,7 +89,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* QUICK ADD FORM */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h3 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em] flex items-center gap-2">
                 <Plus size={14} strokeWidth={3} /> Quick Add
@@ -158,7 +172,7 @@ export default function App() {
                     ) : (
                       <p className="text-xl font-bold text-black dark:text-white tracking-tight">{goalName}</p>
                     )}
-                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1 ">Active Target</p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">Active Target</p>
                   </div>
                   
                   <div className="text-right w-full sm:w-auto">
@@ -167,7 +181,7 @@ export default function App() {
                     ) : (
                       <p className="text-xl font-bold text-black dark:text-white tracking-tight">{formatIDR(goalTarget)}</p>
                     )}
-                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1 ">Price Requirement</p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">Price Requirement</p>
                   </div>
                 </div>
 
