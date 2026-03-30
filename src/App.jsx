@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react'; // Tambah useEffect
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useFinance } from './hooks/useFinance';
+import { supabase } from './lib/supabaseClient'; // Pastikan path-nya benar
 import { formatIDR, formatDate } from './utils/formatters';
-import { Plus, Trash2, TrendingUp, TrendingDown, Target, Calendar, X, Edit2, Check } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, TrendingDown, Target, Calendar, X, Edit2, Check, Lock } from 'lucide-react';
 
 export default function App() {
   const { transactions, totals, addEntry, removeEntry } = useFinance();
@@ -10,30 +11,60 @@ export default function App() {
   const [type, setType] = useState('expense');
   const [filterDate, setFilterDate] = useState('');
   
+  // Auth & Cloud States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [savedPin, setSavedPin] = useState('');
   const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [goalName, setGoalName] = useState('Loading...');
+  const [goalTarget, setGoalTarget] = useState(0);
 
-  // --- PERSISTENCE LOGIC FOR GOALS ---
-  // Ambil data dari localStorage saat pertama kali load
-  const [goalName, setGoalName] = useState(() => {
-    return localStorage.getItem('finyam_goal_name') || 'Setup RTX PC';
-  });
-  
-  const [goalTarget, setGoalTarget] = useState(() => {
-    const savedTarget = localStorage.getItem('finyam_goal_target');
-    return savedTarget ? Number(savedTarget) : 15000000;
-  });
+  // 1. Ambil Settings (Goal & PIN) dari Supabase saat App dibuka
+  const fetchSettings = async () => {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('*')
+      .eq('id', 1)
+      .single();
+    
+    if (data) {
+      setGoalName(data.goal_name);
+      setGoalTarget(data.goal_target);
+      setSavedPin(data.pin_code);
+    }
+  };
 
-  // Simpan otomatis setiap kali goalName atau goalTarget berubah
   useEffect(() => {
-    localStorage.setItem('finyam_goal_name', goalName);
-    localStorage.setItem('finyam_goal_target', goalTarget);
-  }, [goalName, goalTarget]);
-  // -----------------------------------
+    fetchSettings();
+  }, []);
+
+  // 2. Update Goal ke Supabase (Cloud Sync)
+  const handleUpdateGoal = async () => {
+    if (isEditingGoal) {
+      await supabase
+        .from('settings')
+        .update({ 
+          goal_name: goalName, 
+          goal_target: Number(goalTarget) 
+        })
+        .eq('id', 1);
+    }
+    setIsEditingGoal(!isEditingGoal);
+  };
+
+  // 3. Login Logic
+  const handleLogin = () => {
+    if (pinInput === savedPin) {
+      setIsAuthenticated(true);
+    } else {
+      alert("PIN Salah, Yam!");
+      setPinInput('');
+    }
+  };
 
   const balance = totals.income - totals.expense;
-  const progress = Math.min(Math.max((balance / goalTarget) * 100, 0), 100);
+  const progress = Math.min(Math.max((balance / (goalTarget || 1)) * 100, 0), 100);
   const dateInputRef = useRef(null);
-  const goalRef = useRef(null);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -52,10 +83,44 @@ export default function App() {
     setAmount('');
   };
 
+  // --- LOCK SCREEN UI ---
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-6 transition-colors font-sans">
+        <div className="w-12 h-12 bg-black dark:bg-white rounded-2xl flex items-center justify-center mb-8 shadow-2xl">
+          <Lock className="text-white dark:text-black" size={20} />
+        </div>
+        <h1 className="text-xl font-bold tracking-tighter mb-2 dark:text-white">fin.yam</h1>
+        <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-12">Protected Access</p>
+        
+        <div className="flex gap-4 mb-12">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className={`w-3 h-3 rounded-full border-2 border-gray-200 dark:border-[#1F1F1F] transition-all ${pinInput.length > i ? 'bg-black dark:bg-white border-black dark:border-white scale-110' : ''}`}></div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-3 gap-8">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((btn) => (
+            <button 
+              key={btn}
+              onClick={() => {
+                if (btn === 'C') setPinInput('');
+                else if (btn === 'OK') handleLogin();
+                else if (pinInput.length < 4) setPinInput(prev => prev + btn);
+              }}
+              className="w-14 h-14 flex items-center justify-center text-lg font-bold hover:bg-gray-100 dark:hover:bg-[#111111] rounded-full transition-all dark:text-white active:scale-90"
+            >
+              {btn}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // --- MAIN DASHBOARD UI ---
   return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-[#0A0A0A] transition-colors duration-300 font-sans">
-      
-      {/* NAVBAR - Centered Logo */}
       <nav className="bg-white dark:bg-[#111111] border-b border-gray-100 dark:border-[#1F1F1F] shadow-tiny sticky top-0 z-50 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-center items-center">
           <div className="flex items-center gap-2">
@@ -70,8 +135,8 @@ export default function App() {
       <main className="max-w-7xl mx-auto p-4 sm:p-6 md:p-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* ASIDE: STATS & FORM */}
           <aside className="lg:col-span-4 space-y-8">
+            {/* BALANCE CARD */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h2 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em]">Total Balance</h2>
               <p className={`text-3xl font-bold tracking-tighter break-all ${balance >= 0 ? 'text-black dark:text-white' : 'text-red-500'}`}>
@@ -89,6 +154,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* QUICK ADD FORM */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h3 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em] flex items-center gap-2">
                 <Plus size={14} strokeWidth={3} /> Quick Add
@@ -111,9 +177,7 @@ export default function App() {
             </div>
           </aside>
 
-          {/* RIGHT: LEDGER & GOAL */}
           <div className="lg:col-span-8 space-y-8">
-            
             {/* RIWAYAT CARD */}
             <section className="bg-white dark:bg-[#111111] p-5 sm:p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny h-auto transition-colors">
               <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100 dark:border-[#1F1F1F]">
@@ -153,13 +217,13 @@ export default function App() {
               </div>
             </section>
 
-            {/* GOAL CARD */}
-            <section ref={goalRef} className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
+            {/* GOAL CARD (Integrated with Cloud) */}
+            <section className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100 dark:border-[#1F1F1F]">
                 <h2 className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
                    <Target size={14} strokeWidth={2.5}/> Savings Goal
                 </h2>
-                <button onClick={() => setIsEditingGoal(!isEditingGoal)} className="text-gray-400 hover:text-black dark:hover:text-white transition-colors">
+                <button onClick={handleUpdateGoal} className="text-gray-400 hover:text-black dark:hover:text-white transition-colors">
                   {isEditingGoal ? <Check size={18} className="text-green-500" /> : <Edit2 size={16} />}
                 </button>
               </div>

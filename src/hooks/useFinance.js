@@ -1,38 +1,32 @@
+// src/hooks/useFinance.js
 import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
-export const useFinance = () => {
-  const [transactions, setTransactions] = useState(() => {
-    const saved = localStorage.getItem('finyam_ledger');
-    return saved ? JSON.parse(saved) : [];
-  });
+export function useFinance() {
+  const [transactions, setTransactions] = useState([]);
 
-  useEffect(() => {
-    localStorage.setItem('finyam_ledger', JSON.stringify(transactions));
-  }, [transactions]);
-
-  const totals = transactions.reduce(
-    (acc, curr) => {
-      if (curr.type === 'income') acc.income += curr.amount;
-      else acc.expense += curr.amount;
-      return acc;
-    },
-    { income: 0, expense: 0 }
-  );
-
-  const addEntry = (desc, amount, type) => {
-    const newEntry = {
-      id: crypto.randomUUID(),
-      desc,
-      amount: Number(amount),
-      type,
-      date: new Date().toISOString(),
-    };
-    setTransactions(prev => [newEntry, ...prev]);
+  const fetchTransactions = async () => {
+    const { data } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
+    if (data) setTransactions(data);
   };
 
-  const removeEntry = (id) => {
-    setTransactions(prev => prev.filter(item => item.id !== id));
+  useEffect(() => { fetchTransactions(); }, []);
+
+  const addEntry = async (desc, amount, type) => {
+    const { error } = await supabase.from('transactions').insert([{ description: desc, amount, type }]);
+    if (!error) fetchTransactions();
   };
 
-  return { transactions, totals, addEntry, removeEntry };
-};
+  const removeEntry = async (id) => {
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) fetchTransactions();
+  };
+
+  const totals = transactions.reduce((acc, t) => {
+    if (t.type === 'income') acc.income += Number(t.amount);
+    else acc.expense += Number(t.amount);
+    return acc;
+  }, { income: 0, expense: 0 });
+
+  return { transactions, totals, addEntry, removeEntry, refresh: fetchTransactions };
+}
