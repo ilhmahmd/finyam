@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useFinance } from './hooks/useFinance';
-import { supabase } from './lib/supabaseClient'; // Pastikan path-nya benar
+import { supabase } from './lib/supabaseClient';
 import { formatIDR, formatDate } from './utils/formatters';
 import { Plus, Trash2, TrendingUp, TrendingDown, Target, Calendar, X, Edit2, Check, Lock } from 'lucide-react';
 
@@ -15,13 +15,14 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [savedPin, setSavedPin] = useState('');
+  const [isError, setIsError] = useState(false); // State untuk handle error delay
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalName, setGoalName] = useState('Loading...');
   const [goalTarget, setGoalTarget] = useState(0);
 
-  // 1. Ambil Settings (Goal & PIN) dari Supabase saat App dibuka
+  // 1. Fetch Settings
   const fetchSettings = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('settings')
       .select('*')
       .eq('id', 1)
@@ -38,28 +39,31 @@ export default function App() {
     fetchSettings();
   }, []);
 
-  // 2. Update Goal ke Supabase (Cloud Sync)
+  // 2. Auto-Login Logic dengan Error Delay
+  useEffect(() => {
+    if (pinInput.length === 4) {
+      if (pinInput === savedPin) {
+        setIsAuthenticated(true);
+        setIsError(false);
+      } else {
+        setIsError(true);
+        // Delay 1.5 detik sebelum reset biar tulisan error sempet kebaca
+        setTimeout(() => {
+          setPinInput('');
+          setIsError(false);
+        }, 1500);
+      }
+    }
+  }, [pinInput, savedPin]);
+
   const handleUpdateGoal = async () => {
     if (isEditingGoal) {
       await supabase
         .from('settings')
-        .update({ 
-          goal_name: goalName, 
-          goal_target: Number(goalTarget) 
-        })
+        .update({ goal_name: goalName, goal_target: Number(goalTarget) })
         .eq('id', 1);
     }
     setIsEditingGoal(!isEditingGoal);
-  };
-
-  // 3. Login Logic
-  const handleLogin = () => {
-    if (pinInput === savedPin) {
-      setIsAuthenticated(true);
-    } else {
-      alert("PIN Salah, Yam!");
-      setPinInput('');
-    }
   };
 
   const balance = totals.income - totals.expense;
@@ -69,9 +73,7 @@ export default function App() {
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       if (filterDate === '') return true;
-      const tDate = new Date(t.date);
-      const selectedDate = new Date(filterDate);
-      return tDate.toDateString() === selectedDate.toDateString();
+      return new Date(t.date).toDateString() === new Date(filterDate).toDateString();
     });
   }, [transactions, filterDate]);
 
@@ -79,64 +81,92 @@ export default function App() {
     e.preventDefault();
     if (!desc || !amount || amount <= 0) return;
     addEntry(desc, amount, type);
-    setDesc('');
-    setAmount('');
+    setDesc(''); setAmount('');
   };
 
   // --- LOCK SCREEN UI ---
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-white dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-6 transition-colors font-sans">
-        <div className="w-12 h-12 bg-black dark:bg-white rounded-2xl flex items-center justify-center mb-8 shadow-2xl">
-          <Lock className="text-white dark:text-black" size={20} />
-        </div>
-        <h1 className="text-xl font-bold tracking-tighter mb-2 dark:text-white">fin.yam</h1>
-        <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-12">Protected Access</p>
-        
-        <div className="flex gap-4 mb-12">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className={`w-3 h-3 rounded-full border-2 border-gray-200 dark:border-[#1F1F1F] transition-all ${pinInput.length > i ? 'bg-black dark:bg-white border-black dark:border-white scale-110' : ''}`}></div>
-          ))}
+      <div className="min-h-screen bg-white dark:bg-[#0A0A0A] flex flex-col items-center justify-center p-6 transition-colors font-sans overflow-hidden relative">
+        <div className="flex flex-col items-center z-10">
+          <div className="w-12 h-12 bg-black dark:bg-white rounded-3xl flex items-center justify-center mb-8 shadow-2xl transition-colors">
+            <Lock className="text-white dark:text-black" size={20} />
+          </div>
+          <h1 className="text-xl font-bold tracking-tighter mb-2 dark:text-white transition-colors">fin.yam</h1>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-gray-400 mb-16">Enter Secure PIN</p>
+          
+          <div className="flex gap-4 relative">
+            <input 
+              autoFocus
+              type="text"
+              pattern="\d*"
+              inputMode="numeric"
+              maxLength={4}
+              value={pinInput}
+              onChange={(e) => !isError && setPinInput(e.target.value.replace(/\D/g, ''))}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-default z-20"
+            />
+
+            {[...Array(4)].map((_, i) => (
+              <div 
+                key={i} 
+                className={`w-14 h-16 rounded-xl border flex items-center justify-center transition-all duration-300 shadow-sm
+                  ${isError 
+                    ? 'border-red-500 bg-red-50 dark:bg-red-950/10' 
+                    : pinInput.length === i 
+                      ? 'border-black dark:border-white bg-gray-50 dark:bg-[#111111]' 
+                      : 'border-gray-100 dark:border-[#1F1F1F] bg-white dark:bg-[#0A0A0A]'
+                  }`}
+              >
+                {pinInput.length > i ? (
+                  <div className={`w-2.5 h-2.5 rounded-full animate-popIn ${isError ? 'bg-red-500' : 'bg-black dark:bg-white'}`}></div>
+                ) : (
+                  <div className="w-2 h-2 bg-gray-100 dark:bg-[#1F1F1F] rounded-full"></div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="h-8 mt-8 text-center">
+            {isError && (
+              <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest animate-shake">
+                Invalid PIN. Try again.
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-8">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((btn) => (
-            <button 
-              key={btn}
-              onClick={() => {
-                if (btn === 'C') setPinInput('');
-                else if (btn === 'OK') handleLogin();
-                else if (pinInput.length < 4) setPinInput(prev => prev + btn);
-              }}
-              className="w-14 h-14 flex items-center justify-center text-lg font-bold hover:bg-gray-100 dark:hover:bg-[#111111] rounded-full transition-all dark:text-white active:scale-90"
-            >
-              {btn}
-            </button>
-          ))}
+        <div className="absolute inset-0 z-0 opacity-5 dark:opacity-10 pointer-events-none">
+          <div className="absolute -left-16 -top-16 w-64 h-64 bg-gray-300 dark:bg-gray-800 rounded-full blur-3xl"></div>
+          <div className="absolute -right-16 -bottom-16 w-64 h-64 bg-gray-300 dark:bg-gray-800 rounded-full blur-3xl"></div>
         </div>
       </div>
     );
   }
 
-  // --- MAIN DASHBOARD UI ---
   return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-[#0A0A0A] transition-colors duration-300 font-sans">
       <nav className="bg-white dark:bg-[#111111] border-b border-gray-100 dark:border-[#1F1F1F] shadow-tiny sticky top-0 z-50 transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-center items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
+          <div className="w-10"></div> 
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-black dark:bg-white rounded-full"></div>
             <h1 className="text-xl font-bold tracking-tight text-black dark:text-white">
               fin<span className="font-light text-gray-400 dark:text-gray-500">.yam</span>
             </h1>
           </div>
+          <button 
+            onClick={() => { setIsAuthenticated(false); setPinInput(''); }}
+            className="w-10 h-10 flex items-center justify-center rounded-xl border border-gray-100 dark:border-[#1F1F1F] hover:bg-gray-50 dark:hover:bg-[#1A1A1A] text-gray-400 hover:text-black dark:hover:text-white transition-all active:scale-90"
+          >
+            <Lock size={18} />
+          </button>
         </div>
       </nav>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 md:p-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
           <aside className="lg:col-span-4 space-y-8">
-            {/* BALANCE CARD */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h2 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em]">Total Balance</h2>
               <p className={`text-3xl font-bold tracking-tighter break-all ${balance >= 0 ? 'text-black dark:text-white' : 'text-red-500'}`}>
@@ -154,7 +184,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* QUICK ADD FORM */}
             <div className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <h3 className="text-[11px] text-gray-400 font-bold mb-6 uppercase tracking-[0.2em] flex items-center gap-2">
                 <Plus size={14} strokeWidth={3} /> Quick Add
@@ -178,7 +207,6 @@ export default function App() {
           </aside>
 
           <div className="lg:col-span-8 space-y-8">
-            {/* RIWAYAT CARD */}
             <section className="bg-white dark:bg-[#111111] p-5 sm:p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny h-auto transition-colors">
               <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100 dark:border-[#1F1F1F]">
                 <h2 className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em]">Transaction History</h2>
@@ -217,7 +245,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* GOAL CARD (Integrated with Cloud) */}
             <section className="bg-white dark:bg-[#111111] p-7 rounded-2xl border border-gray-100 dark:border-[#1F1F1F] shadow-tiny transition-colors">
               <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100 dark:border-[#1F1F1F]">
                 <h2 className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
