@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* 1. Import Google Sans (Product Sans) */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;700;900&display=swap');
+
+/* 2. Konfigurasi Tailwind v4 Theme */
+@theme {
+  /* Menyeting Google Sans (Noto Sans adalah alternatif terdekat yang tersedia publik) sebagai font default */
+  --font-sans: 'Noto Sans', 'Google Sans', 'system-ui', 'sans-serif';
+  
+  /* Menambah shadow super tipis (custom) */
+  --shadow-tiny: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+/* 3. Global Reset */
+body {
+  @apply bg-[#FAFAFA] text-[#1A1A1A] antialiased;
+}
+
+/* Custom styling untuk input agar clean */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
